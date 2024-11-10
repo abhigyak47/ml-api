@@ -1,14 +1,16 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, session
 import librosa
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+import os
 
 # Load the pre-trained model
 model = load_model('heart_model.keras')
 
 # Initialize Flask app
 app = Flask(__name__)
+app.secret_key = os.urandom(24)  # Secure session key
 
 # Function to process audio and extract MFCCs
 n_fft = 2048
@@ -35,7 +37,7 @@ def process_audio(filename, duration=15):
 
     return mfccs
 
-# Define route for inference
+# Define route for inference and diagnosis
 @app.route('/predict', methods=['POST'])
 def predict():
     if 'file' not in request.files:
@@ -62,10 +64,47 @@ def predict():
         prediction = model.predict(mfccs)
         predicted_class = np.argmax(prediction)
 
-        return jsonify({"predicted_class": int(predicted_class)})
+        # Convert numpy int64 to regular Python int
+        predicted_class = int(predicted_class)
+
+        # Store prediction and diagnosis in session
+        if predicted_class == 0:
+            diagnosis = "Your heartbeat is classified as Normal. No irregularities detected."
+        elif predicted_class == 1:
+            diagnosis = "Your heartbeat shows signs of a Murmur. It's important to consult a doctor."
+        elif predicted_class == 2:
+            diagnosis = "Your heartbeat shows signs of an Extrastole. It may require further evaluation by a healthcare provider."
+        else:
+            diagnosis = "Unable to classify heartbeat."
+
+        # Store both classification and diagnosis in session
+        session['heartbeat_class'] = predicted_class
+        session['diagnosis'] = diagnosis
+
+        # Ensure the response is in standard Python types
+        return jsonify({
+            "predicted_class": predicted_class,
+            "diagnosis": diagnosis
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Route to retrieve chat history and continue conversation
+@app.route('/chat', methods=['GET'])
+def chat():
+    heartbeat_class = session.get('heartbeat_class', None)
+    diagnosis = session.get('diagnosis', None)
+
+    if heartbeat_class is not None:
+        return jsonify({
+            "previous_heartbeat_class": heartbeat_class,
+            "previous_diagnosis": diagnosis
+        })
+    else:
+        return jsonify({
+            "message": "No previous heartbeat data found. Please upload a heartbeat file first."
+        })
 
 # Run the app
 if __name__ == '__main__':
