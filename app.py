@@ -5,7 +5,7 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 
 # Load the pre-trained model
-model = load_model('/Users/abhigyakoirala/Downloads/heart_model.keras')
+model = load_model('heart_model.keras')
 
 # Initialize Flask app
 app = Flask(__name__)
