@@ -11,6 +11,9 @@ model = load_model('heart_model.keras')
 app = Flask(__name__)
 
 # Function to process audio and extract MFCCs
+n_fft = 2048
+hop_length = 512
+
 def process_audio(filename, duration=15):
     signal, sr = librosa.load(filename, sr=22050)
     time = librosa.get_duration(y=signal, sr=sr)
@@ -19,7 +22,17 @@ def process_audio(filename, duration=15):
     if round(time) < duration:
         signal = librosa.util.fix_length(signal, size=sr * duration, mode='wrap')
 
-    mfccs = librosa.feature.mfcc(y=signal, sr=sr, n_fft=2048, hop_length=512, n_mfcc=13)
+    # Extract MFCCs
+    mfccs = librosa.feature.mfcc(y=signal, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mfcc=13)
+
+    # Pad or truncate the MFCCs to the desired length (646 time frames)
+    target_length = 646
+    if mfccs.shape[1] < target_length:
+        padding = target_length - mfccs.shape[1]
+        mfccs = np.pad(mfccs, ((0, 0), (0, padding)), mode='constant')
+    elif mfccs.shape[1] > target_length:
+        mfccs = mfccs[:, :target_length]
+
     return mfccs
 
 # Define route for inference
@@ -41,9 +54,9 @@ def predict():
         # Process audio to extract MFCCs
         mfccs = process_audio(filename)
 
-        # Reshape data to match model input
-        mfccs = np.expand_dims(mfccs, axis=-1)  # (time_frames, n_mfcc, 1)
-        mfccs = np.expand_dims(mfccs, axis=0)   # (1, time_frames, n_mfcc, 1)
+        # Reshape the MFCCs to match the input shape of the model (1, 13, 646, 1)
+        mfccs = np.expand_dims(mfccs, axis=-1)  # (13, 646, 1)
+        mfccs = np.expand_dims(mfccs, axis=0)   # (1, 13, 646, 1)
 
         # Make prediction
         prediction = model.predict(mfccs)
@@ -57,4 +70,3 @@ def predict():
 # Run the app
 if __name__ == '__main__':
     app.run(debug=True)
-
